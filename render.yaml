@@ -1,0 +1,66 @@
+# Render.com blueprint — the free, no-credit-card path for Tamridiano.
+#
+# Render reads this file automatically: Dashboard -> New -> Blueprint -> pick
+# the repo. The env vars marked `sync: false` are prompted for in the dashboard
+# and are never stored in git.
+#
+# Why the database lives outside Render:
+#   A free Render web service has an ephemeral filesystem, so a SQLite file is
+#   wiped on every deploy, restart and idle spin-down — exam grades included.
+#   Free Render Postgres is not a substitute either: it is deleted 30 days
+#   after creation. A free Neon database (neon.com, no credit card) has no
+#   expiry, so student data survives. Paste its connection string verbatim;
+#   app/config.py rewrites the sslmode/channel_binding parameters that asyncpg
+#   would otherwise reject.
+
+services:
+  - type: web
+    name: tamridiano
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      # Required. From neon.com -> your project -> Connect.
+      - key: DATABASE_URL
+        sync: false
+      # One worker: a free instance has 512 MB of RAM, and each worker is a
+      # separate Python process.
+      - key: WORKERS
+        value: "1"
+      # Neon's free tier allows a limited number of connections, and it
+      # suspends an idle database and drops the open sockets. Keeping the pool
+      # small stays well inside the limit; pool_pre_ping (set in db.py) notices
+      # the dropped sockets and reconnects on the next query.
+      - key: DB_POOL_SIZE
+        value: "5"
+      - key: DB_MAX_OVERFLOW
+        value: "5"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_PASSCODE
+        sync: false
+      - key: LLM_BASE_URL
+        value: https://codecraftapi.com/v1
+      - key: LLM_MODEL
+        value: gemini-3.7-flash
+      - key: LLM_MODEL_HEAVY
+        value: claude-opus-5
+      - key: LLM_API_KEY
+        sync: false
+      # Asks the service's own /api/health every 10 minutes so Render does not
+      # suspend it after 15 minutes of quiet. Render sets RENDER_EXTERNAL_URL,
+      # so KEEP_ALIVE_URL needs no value here.
+      - key: KEEP_ALIVE
+        value: "true"
+      - key: KEEP_ALIVE_INTERVAL_MINUTES
+        value: "10"
+      # Render blocks outbound SMTP ports 25/465/587 on free services, so Gmail
+      # cannot send sign-in codes here. `console` writes the code to the deploy
+      # log; switch to `resend` or `brevo` (both HTTPS, both free) to email it.
+      - key: EMAIL_PROVIDER
+        value: console
+      - key: EMAIL_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
